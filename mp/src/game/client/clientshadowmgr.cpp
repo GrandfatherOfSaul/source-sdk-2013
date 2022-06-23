@@ -81,6 +81,7 @@
 #include "toolframework_client.h"
 #include "bonetoworldarray.h"
 #include "cmodel.h"
+#include "util_shared.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -2172,44 +2173,49 @@ void CClientShadowMgr::ComputeExtraClipPlanes( IClientRenderable* pRenderable,
 	ClientShadowHandle_t handle, const Vector* vec, 
 	const Vector& mins, const Vector& maxs, const Vector& localShadowDir )
 {
-	// Compute the world-space position of the corner of the bounding box
-	// that's got the highest dotproduct with the local shadow dir...
+	ClientShadow_t& shadow = m_Shadows[handle];
+	C_BaseEntity *pEntity = ClientEntityList().GetBaseEntityFromHandle( shadow.m_Entity );
+
 	Vector origin = pRenderable->GetRenderOrigin( );
 	float dir[3];
 
-	int i;
-	for ( i = 0; i < 3; ++i )
-	{
-		if (localShadowDir[i] < 0.0f)
-		{
-			VectorMA( origin, maxs[i], vec[i], origin );
-			dir[i] = 1;
-		}
-		else
-		{
-			VectorMA( origin, mins[i], vec[i], origin );
-			dir[i] = -1;
-		}
-	}
-
-	// Now that we have it, create 3 planes...
+	// Create 3 planes...
 	Vector normal;
 	ClearExtraClipPlanes(handle);
-	for ( i = 0; i < 3; ++i )
-	{
-		VectorMultiply( vec[i], dir[i], normal );
-		float dist = DotProduct( normal, origin );
-		AddExtraClipPlane( handle, normal, dist );
-	}
 
-	ClientShadow_t& shadow = m_Shadows[handle];
-	C_BaseEntity *pEntity = ClientEntityList().GetBaseEntityFromHandle( shadow.m_Entity );
-	if ( pEntity && pEntity->m_bEnableRenderingClipPlane )
+	if ( pEntity )
 	{
-		normal[ 0 ] = -pEntity->m_fRenderingClipPlane[ 0 ];
-		normal[ 1 ] = -pEntity->m_fRenderingClipPlane[ 1 ];
-		normal[ 2 ] = -pEntity->m_fRenderingClipPlane[ 2 ];
-		AddExtraClipPlane( handle, normal, -pEntity->m_fRenderingClipPlane[ 3 ] - 0.5f );
+		trace_t tr;
+		Vector vecShadowDir = GetShadowDirection( pRenderable );
+		
+		int i;
+		for ( i = 0; i < 3; ++i )
+		{
+			dir[0] = 0;
+			dir[1] = 0;
+			dir[2] = 0;
+			
+			if (vecShadowDir[i] < 0.0f)
+			{
+				dir[i] = 1;
+			}
+			else
+			{
+				dir[i] = -1;
+			}
+			
+			UTIL_TraceHull(pEntity->WorldSpaceCenter(), pEntity->WorldSpaceCenter() + Vector(dir[0] * 64, dir[1] * 64, dir[2] * 64), pEntity->WorldAlignMins(), pEntity->WorldAlignMaxs(), MASK_ALL, pEntity, COLLISION_GROUP_NONE, &tr);
+			if (tr.DidHit()) {
+				AddExtraClipPlane( handle, -tr.plane.normal, -tr.plane.dist );
+			}
+		}
+		
+		if ( pEntity->m_bEnableRenderingClipPlane ) {
+			normal[ 0 ] = -pEntity->m_fRenderingClipPlane[ 0 ];
+			normal[ 1 ] = -pEntity->m_fRenderingClipPlane[ 1 ];
+			normal[ 2 ] = -pEntity->m_fRenderingClipPlane[ 2 ];
+			AddExtraClipPlane( handle, normal, -pEntity->m_fRenderingClipPlane[ 3 ] - 0.5f );
+		}
 	}
 }
 
